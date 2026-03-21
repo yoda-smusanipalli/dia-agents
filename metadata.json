@@ -1,0 +1,5 @@
+{
+  "name": "DIA - DevOps Intelligence Agent",
+  "description": "Platform Engineering Health Intelligence. Connects to DevOps toolchains, performs deep analysis, and delivers board-level health intelligence.",
+  "requestFramePermissions": []
+}

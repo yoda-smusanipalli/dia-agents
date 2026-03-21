@@ -1,0 +1,32 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: dia-dev-cert
+spec:
+  domains:
+    - www.dia-dev.com
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dia-ingress
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: "dia-static-ip"
+    networking.gke.io/managed-certificates: "dia-dev-cert"
+    kubernetes.io/ingress.class: "gce"
+    # Increase timeout for SSE/long-running connections
+    cloud.google.com/backend-config: "backend-config"
+    # Disable HTTP/2 to avoid QUIC issues with SSE
+    ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  rules:
+  - host: www.dia-dev.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cloud-login-console-service
+            port:
+              number: 80
