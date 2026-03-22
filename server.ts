@@ -27,9 +27,10 @@ async function startServer() {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       org_id INTEGER,
-      email TEXT UNIQUE,
+      email TEXT,
       password TEXT,
-      FOREIGN KEY(org_id) REFERENCES organizations(id)
+      FOREIGN KEY(org_id) REFERENCES organizations(id),
+      UNIQUE(org_id, email)
     );
     CREATE TABLE IF NOT EXISTS scan_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,6 +157,32 @@ async function startServer() {
     );
   `);
 
+  // Migration: allow same email across different orgs
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
+    const hasUniqueEmail = db.prepare("PRAGMA index_list(users)").all().some((idx: any) => {
+      const cols = db.prepare(`PRAGMA index_info(${idx.name})`).all() as any[];
+      return idx.unique && cols.length === 1 && tableInfo[cols[0]?.cid]?.name === 'email';
+    });
+    if (hasUniqueEmail) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          org_id INTEGER,
+          email TEXT,
+          password TEXT,
+          FOREIGN KEY(org_id) REFERENCES organizations(id),
+          UNIQUE(org_id, email)
+        );
+        INSERT INTO users_new SELECT * FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `);
+    }
+  } catch (e) {
+    // Migration already applied or not needed
+  }
+
   // Clear previously stored scan data on startup
   db.exec(`
     DELETE FROM scan_results;
@@ -194,20 +221,39 @@ async function startServer() {
   });
 
   app.post("/api/auth/login", (req, res) => {
-    const { email, password } = req.body;
-    
-    const user = db.prepare(`
-      SELECT u.id, u.email, u.org_id, o.name as orgName, o.license_type as licenseType 
-      FROM users u 
-      JOIN organizations o ON u.org_id = o.id 
-      WHERE u.email = ? AND u.password = ?
-    `).get(email, password) as any;
+    const { email, password, orgId } = req.body;
 
-    if (user) {
-      res.json({ success: true, user });
-    } else {
-      res.status(401).json({ success: false, message: "Invalid email or password." });
+    const users = db.prepare(`
+      SELECT u.id, u.email, u.org_id, o.name as orgName, o.license_type as licenseType
+      FROM users u
+      JOIN organizations o ON u.org_id = o.id
+      WHERE u.email = ? AND u.password = ?
+    `).all(email, password) as any[];
+
+    if (!users || users.length === 0) {
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
+
+    // If orgId specified, pick that org
+    if (orgId) {
+      const user = users.find((u: any) => u.org_id === Number(orgId));
+      if (user) {
+        return res.json({ success: true, user });
+      }
+      return res.status(401).json({ success: false, message: "Invalid organization." });
+    }
+
+    // If user belongs to multiple orgs, let them choose
+    if (users.length > 1) {
+      return res.json({
+        success: true,
+        multiOrg: true,
+        orgs: users.map((u: any) => ({ org_id: u.org_id, orgName: u.orgName, licenseType: u.licenseType })),
+        email
+      });
+    }
+
+    res.json({ success: true, user: users[0] });
   });
 
   // API Routes (Mock endpoints for DIA)

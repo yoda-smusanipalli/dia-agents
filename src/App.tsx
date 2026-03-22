@@ -2772,7 +2772,7 @@ const DevProductivityView = ({ user }: { user: any }) => {
 export default function App() {
   const { startScan, activeScans } = useScanContext();
 
-  const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
+  const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated' | 'selectOrg'>('login');
   const [user, setUser] = useState<any>(null);
 
   // Auth Form State
@@ -2782,6 +2782,7 @@ export default function App() {
   const [licenseType, setLicenseType] = useState('trial');
   const [authError, setAuthError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [availableOrgs, setAvailableOrgs] = useState<any[]>([]);
 
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -2814,8 +2815,13 @@ export default function App() {
       const data = await res.json();
 
       if (data.success) {
-        setUser(data.user);
-        setAuthState('authenticated');
+        if (data.multiOrg) {
+          setAvailableOrgs(data.orgs);
+          setAuthState('selectOrg');
+        } else {
+          setUser(data.user);
+          setAuthState('authenticated');
+        }
       } else {
         setAuthError(data.message);
       }
@@ -2846,58 +2852,106 @@ export default function App() {
           </div>
 
           <Card className="backdrop-blur-xl bg-zinc-900/80 border-white/5 shadow-2xl">
-            <div className="flex gap-4 mb-6 border-b border-white/10 pb-4">
-              <button 
-                onClick={() => { setAuthState('login'); setAuthError(''); }}
-                className={cn("text-sm font-medium transition-colors", authState === 'login' ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300")}
-              >
-                Sign In
-              </button>
-              <button 
-                onClick={() => { setAuthState('signup'); setAuthError(''); }}
-                className={cn("text-sm font-medium transition-colors", authState === 'signup' ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300")}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <form onSubmit={handleAuth} className="space-y-4">
-              {authState === 'signup' && (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Organization Name</label>
-                    <input type="text" required value={orgName} onChange={e => setOrgName(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="Acme Corp" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">License Tier</label>
-                    <select value={licenseType} onChange={e => setLicenseType(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50 appearance-none">
-                      <option value="trial">14-Day Free Trial</option>
-                      <option value="licensed">Enterprise License</option>
-                    </select>
-                  </div>
-                </>
-              )}
-              
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Work Email</label>
-                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="admin@company.com" />
-              </div>
-              
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Password</label>
-                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="••••••••" />
-              </div>
-
-              {authError && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm">
-                  <AlertTriangle className="w-4 h-4 shrink-0" /> {authError}
+            {authState === 'selectOrg' ? (
+              <>
+                <div className="mb-4">
+                  <h2 className="text-sm font-medium text-white">Select Organization</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Your account belongs to multiple organizations</p>
                 </div>
-              )}
+                <div className="space-y-2">
+                  {availableOrgs.map((org: any) => (
+                    <button
+                      key={org.org_id}
+                      onClick={async () => {
+                        setIsLoading(true);
+                        try {
+                          const res = await fetch('/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password, orgId: org.org_id })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setUser(data.user);
+                            setAuthState('authenticated');
+                          }
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      }}
+                      className="w-full p-3 bg-black/40 border border-white/5 rounded-lg hover:border-emerald-500/50 transition-colors text-left flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-white text-sm font-medium">{org.orgName}</div>
+                        <div className="text-zinc-500 text-xs capitalize">{org.licenseType}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-zinc-500" />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { setAuthState('login'); setAvailableOrgs([]); }}
+                  className="w-full text-sm text-zinc-500 hover:text-zinc-300 mt-4 transition-colors"
+                >
+                  Back to Sign In
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex gap-4 mb-6 border-b border-white/10 pb-4">
+                  <button
+                    onClick={() => { setAuthState('login'); setAuthError(''); }}
+                    className={cn("text-sm font-medium transition-colors", authState === 'login' ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300")}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => { setAuthState('signup'); setAuthError(''); }}
+                    className={cn("text-sm font-medium transition-colors", authState === 'signup' ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300")}
+                  >
+                    Create Account
+                  </button>
+                </div>
 
-              <button type="submit" disabled={isLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 mt-6">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (authState === 'login' ? 'Access Console' : 'Provision Account')}
-              </button>
-            </form>
+                <form onSubmit={handleAuth} className="space-y-4">
+                  {authState === 'signup' && (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Organization Name</label>
+                        <input type="text" required value={orgName} onChange={e => setOrgName(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="Acme Corp" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">License Tier</label>
+                        <select value={licenseType} onChange={e => setLicenseType(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50 appearance-none">
+                          <option value="trial">14-Day Free Trial</option>
+                          <option value="licensed">Enterprise License</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Work Email</label>
+                    <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="admin@company.com" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Password</label>
+                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50" placeholder="••••••••" />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm">
+                      <AlertTriangle className="w-4 h-4 shrink-0" /> {authError}
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={isLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 mt-6">
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (authState === 'login' ? 'Access Console' : 'Provision Account')}
+                  </button>
+                </form>
+              </>
+            )}
           </Card>
         </motion.div>
       </div>
