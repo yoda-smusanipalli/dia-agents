@@ -642,7 +642,7 @@ async function startServer() {
     const status = scanStatus.get(scanId);
 
     if (!status) {
-      return res.status(404).json({ success: false, message: 'Scan not found' });
+      return res.json({ status: 'error', logs: ['[ERROR] Scan session not found. The server may have restarted. Please run a new scan.'], data: null, message: 'Scan session not found. Please run a new scan.' });
     }
 
     res.json(status);
@@ -3127,7 +3127,7 @@ async function startServer() {
     const status = scanStatus.get(scanId);
 
     if (!status) {
-      return res.status(404).json({ success: false, message: 'Scan not found' });
+      return res.json({ status: 'error', logs: ['[ERROR] Scan session not found. The server may have restarted. Please run a new scan.'], data: null, message: 'Scan session not found. Please run a new scan.' });
     }
 
     res.json(status);

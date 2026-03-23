@@ -313,6 +313,7 @@ const CicdAgentView = ({ user }: { user: any }) => {
   const [configForm, setConfigForm] = useState({ credentialType: '', credentialValue: '', endpointUrl: '' });
   const [configLoading, setConfigLoading] = useState(false);
   const [repoProgress, setRepoProgress] = useState({ total: 0, scanned: 0 });
+  const [scanError, setScanError] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const platformConfigs: Record<string, { name: string, icon: any, color: string, credTypes: string[], needsEndpoint: boolean }> = {
@@ -438,36 +439,44 @@ const CicdAgentView = ({ user }: { user: any }) => {
     }
 
     const configuredPlatforms = Object.keys(platformConfigs).filter(p => isConfigured(p)).join(',');
+    setScanError(null);
 
-    // Start background scan using global context
-    const scanId = await startScan('cicd', configuredPlatforms, user?.org_id);
+    try {
+      // Start background scan using global context
+      const scanId = await startScan('cicd', configuredPlatforms, user?.org_id);
 
-    // Update local state to show that scan has been initiated
-    setScanState('scanning');
-    setScanData(null);
-    setLogs(['[SYSTEM] Scan started in background - you can navigate freely!']);
+      // Update local state to show that scan has been initiated
+      setScanState('scanning');
+      setScanData(null);
+      setLogs(['[SYSTEM] Scan started in background - you can navigate freely!']);
 
-    // Poll scan status to update local display
-    const pollInterval = setInterval(() => {
-      const scan = Array.from(activeScans.values()).find(s => s.scanId === scanId);
+      // Poll scan status to update local display
+      const pollInterval = setInterval(() => {
+        const scan = Array.from(activeScans.values()).find(s => s.scanId === scanId);
 
-      if (scan) {
-        setLogs(scan.logs);
-        setRepoProgress({ total: scan.totalRepos || 0, scanned: scan.scannedRepos || 0 });
+        if (scan) {
+          setLogs(scan.logs);
+          setRepoProgress({ total: scan.totalRepos || 0, scanned: scan.scannedRepos || 0 });
 
-        if (scan.status === 'complete') {
-          setScanData(scan.data);
-          setScanState('complete');
-          clearInterval(pollInterval);
-        } else if (scan.status === 'error') {
-          setScanState('idle');
-          clearInterval(pollInterval);
+          if (scan.status === 'complete') {
+            setScanData(scan.data);
+            setScanState('complete');
+            clearInterval(pollInterval);
+          } else if (scan.status === 'error') {
+            const errorMsg = scan.message || scan.logs.filter(l => l.includes('[ERROR]')).pop() || 'Scan failed. Please check your credentials and try again.';
+            setScanError(errorMsg);
+            setScanState('idle');
+            clearInterval(pollInterval);
+          }
         }
-      }
-    }, 500);
+      }, 500);
 
-    // Cleanup interval on unmount
-    return () => clearInterval(pollInterval);
+      // Cleanup interval on unmount
+      return () => clearInterval(pollInterval);
+    } catch (err: any) {
+      setScanError(err.message || 'Failed to start scan. Please try again.');
+      setScanState('idle');
+    }
   };
 
   const getProgress = () => {
@@ -519,6 +528,29 @@ const CicdAgentView = ({ user }: { user: any }) => {
           )}
         </div>
       </div>
+
+      {/* Scan Error Display */}
+      {scanError && (
+        <Card className="p-4 bg-red-500/10 border-red-500/20">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-red-400 font-medium text-sm mb-1">Scan Failed</h3>
+              <p className="text-xs text-red-400/80 font-mono whitespace-pre-wrap">{scanError}</p>
+              {logs.filter(l => l.includes('[ERROR]')).length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {logs.filter(l => l.includes('[ERROR]')).map((log, i) => (
+                    <p key={i} className="text-xs text-red-400/60 font-mono">{log}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={() => setScanError(null)} className="text-red-400/50 hover:text-red-400 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </Card>
+      )}
 
       {/* Credentials Configuration Panel */}
       <AnimatePresence>
