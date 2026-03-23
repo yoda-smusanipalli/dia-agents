@@ -312,6 +312,7 @@ const CicdAgentView = ({ user }: { user: any }) => {
   const [configPlatform, setConfigPlatform] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState({ credentialType: '', credentialValue: '', endpointUrl: '' });
   const [configLoading, setConfigLoading] = useState(false);
+  const [repoProgress, setRepoProgress] = useState({ total: 0, scanned: 0 });
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const platformConfigs: Record<string, { name: string, icon: any, color: string, credTypes: string[], needsEndpoint: boolean }> = {
@@ -452,6 +453,7 @@ const CicdAgentView = ({ user }: { user: any }) => {
 
       if (scan) {
         setLogs(scan.logs);
+        setRepoProgress({ total: scan.totalRepos || 0, scanned: scan.scannedRepos || 0 });
 
         if (scan.status === 'complete') {
           setScanData(scan.data);
@@ -471,12 +473,11 @@ const CicdAgentView = ({ user }: { user: any }) => {
   const getProgress = () => {
     if (scanState === 'complete') return 100;
     if (logs.some(l => l.includes('Discovery complete'))) return 95;
-    if (logs.some(l => l.includes('[SKILLS]'))) return 90;
-    if (logs.some(l => l.includes('[AZURE]'))) return 75;
-    if (logs.some(l => l.includes('[AWS]'))) return 60;
-    if (logs.some(l => l.includes('[JENKINS]'))) return 45;
-    if (logs.some(l => l.includes('[GITLAB]'))) return 30;
-    if (logs.some(l => l.includes('[GITHUB]'))) return 15;
+    if (repoProgress.total > 0) {
+      // 10-90% range based on actual repo scanning progress
+      return Math.min(90, Math.round(10 + (repoProgress.scanned / repoProgress.total) * 80));
+    }
+    if (logs.some(l => l.includes('[GITHUB]'))) return 10;
     if (logs.length > 0) return 5;
     return 0;
   };
@@ -760,6 +761,16 @@ const CicdAgentView = ({ user }: { user: any }) => {
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
+              {repoProgress.total > 0 && (
+                <div className="flex items-center gap-4 mb-2">
+                  <span className="text-xs text-emerald-400 font-mono">
+                    Repositories: {repoProgress.scanned}/{repoProgress.total} scanned
+                  </span>
+                  <span className="text-xs text-zinc-500 font-mono">
+                    {repoProgress.total - repoProgress.scanned} remaining
+                  </span>
+                </div>
+              )}
               <p className="text-xs text-emerald-500/70 font-mono">{logs[logs.length - 1] || 'Initializing...'}</p>
             </div>
           </div>

@@ -10,6 +10,8 @@ interface Scan {
   startTime: number;
   platforms: string;
   orgId: string;
+  totalRepos?: number;
+  scannedRepos?: number;
 }
 
 interface ScanContextType {
@@ -80,7 +82,9 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 status: status.status,
                 logs: status.logs || scan.logs,
                 data: status.data || scan.data,
-                message: status.message
+                message: status.message,
+                totalRepos: status.totalRepos ?? scan.totalRepos,
+                scannedRepos: status.scannedRepos ?? scan.scannedRepos
               });
             }
             return updated;

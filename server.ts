@@ -2418,6 +2418,9 @@ async function startServer() {
         }
       }
 
+      sendEvent({ type: 'log', message: `[GITHUB] Discovered ${repos.length} repositories.` });
+      sendEvent({ type: 'progress', totalRepos: repos.length, scannedRepos: 0 });
+
       // Security analysis scores
       let hasSecretScanning = 0;
       let hasBranchProtection = 0;
@@ -2432,6 +2435,8 @@ async function startServer() {
 
       for (const repo of repos) {
         reposScanned++;
+        sendEvent({ type: 'log', message: `[GITHUB] Scanning repo ${reposScanned}/${repos.length}: ${repo.name}` });
+        sendEvent({ type: 'progress', totalRepos: repos.length, scannedRepos: reposScanned });
 
         let repoHasIaC = false;
         let repoHasTerraform = false;
@@ -3084,6 +3089,12 @@ async function startServer() {
             if (platform === "GitHub Actions" && cred?.credential_value) {
               const githubResult = await scanGitHubReal(cred.credential_value, (data: any) => {
                 if (data.type === 'log') addLog(data.message);
+                if (data.type === 'progress') {
+                  const current = scanStatus.get(scanId);
+                  if (current) {
+                    scanStatus.set(scanId, { ...current, totalRepos: data.totalRepos, scannedRepos: data.scannedRepos });
+                  }
+                }
               });
               resultPlatforms.push(githubResult);
             }
