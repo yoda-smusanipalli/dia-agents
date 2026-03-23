@@ -303,6 +303,7 @@ const AutoPRButton = ({ user, finding, repoFullName, filePath }: { user: any, fi
 };
 
 const CicdAgentView = ({ user }: { user: any }) => {
+  const { startScan, activeScans } = useScanContext();
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [scanData, setScanData] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -1597,6 +1598,7 @@ const IacView = () => (
 );
 
 const SreView = ({ user }: { user: any }) => {
+  const { startScan, activeScans } = useScanContext();
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [scanData, setScanData] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
