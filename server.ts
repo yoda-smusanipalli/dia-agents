@@ -3103,10 +3103,63 @@ async function startServer() {
           }
         }
 
+        // Compute summary from results
+        const totalPipelines = resultPlatforms.reduce((acc: number, p: any) => acc + (p.pipelinesScanned || 0), 0);
+        const overallMaturity = resultPlatforms.length > 0
+          ? Math.round(resultPlatforms.reduce((acc: number, p: any) => acc + (p.maturityScore || 0), 0) / resultPlatforms.length)
+          : 0;
+        let criticalIssues = 0;
+        let highIssues = 0;
+        resultPlatforms.forEach((p: any) => {
+          if (p.findings && Array.isArray(p.findings)) {
+            p.findings.forEach((f: any) => {
+              if (f.severity === 'CRITICAL') criticalIssues++;
+              if (f.severity === 'HIGH') highIssues++;
+            });
+          }
+        });
+
+        // Persist scan results to DB
+        for (const platformResult of resultPlatforms) {
+          try {
+            db.prepare(`
+              INSERT INTO scan_results (org_id, platform, data) VALUES (?, ?, ?)
+            `).run(orgId, platformResult.name, JSON.stringify(platformResult));
+          } catch (e) {
+            // DB write error, non-fatal
+          }
+
+          // Persist skill assessments
+          if (platformResult.skillScores && Array.isArray(platformResult.skillScores)) {
+            for (const skill of platformResult.skillScores) {
+              try {
+                db.prepare(`
+                  INSERT INTO skill_assessments (org_id, skill_id, skill_name, score, severity, findings)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                `).run(orgId, skill.skillId, skill.name, skill.score, skill.severity, JSON.stringify(skill.findings || []));
+              } catch (e) {
+                // DB write error, non-fatal
+              }
+            }
+          }
+        }
+
+        // Get IaC stats from first GitHub result
+        const iacStats = resultPlatforms.find((p: any) => p.iacStats)?.iacStats || null;
+
         scanStatus.set(scanId, {
           status: 'complete',
           logs,
-          data: { platforms: resultPlatforms }
+          data: {
+            summary: {
+              totalPipelines,
+              overallMaturity,
+              criticalIssues,
+              highIssues
+            },
+            platforms: resultPlatforms,
+            iacStats
+          }
         });
       } catch (error: any) {
         scanStatus.set(scanId, {
