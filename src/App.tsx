@@ -212,32 +212,58 @@ const AgentChatView = ({ user }: { user: any }) => {
 const AutoPRButton = ({ user, finding, repoFullName, filePath }: { user: any, finding: any, repoFullName?: string, filePath?: string }) => {
   const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [prResult, setPrResult] = useState<any>(null);
+  const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [showRec, setShowRec] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleCreatePR = async () => {
+  const canCreatePR = !!(repoFullName || finding.repo || finding.repoFullName);
+
+  const handleFix = async () => {
     setState('loading');
     setErrorMsg('');
+    setRecommendation(null);
 
     try {
-      const res = await fetch('/api/remediation/auto-pr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: user.org_id,
-          finding,
-          repoFullName: repoFullName || finding.repo || finding.repoFullName,
-          filePath: filePath || finding.file || finding.filePath
-        })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        setState('success');
-        setPrResult(data.pr);
+      if (canCreatePR) {
+        // Create PR mode
+        const res = await fetch('/api/remediation/auto-pr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId: user.org_id,
+            finding,
+            repoFullName: repoFullName || finding.repo || finding.repoFullName,
+            filePath: filePath || finding.file || finding.filePath
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setState('success');
+          setPrResult(data.pr);
+        } else if (data.requiresManualFix) {
+          setState('success');
+          setRecommendation(data.message);
+          setShowRec(true);
+        } else {
+          setState('error');
+          setErrorMsg(data.message || 'Failed to create PR');
+        }
       } else {
-        setState('error');
-        setErrorMsg(data.message || 'Failed to create PR');
+        // Recommendation mode
+        const res = await fetch('/api/remediation/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ finding })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setState('success');
+          setRecommendation(data.recommendation);
+          setShowRec(true);
+        } else {
+          setState('error');
+          setErrorMsg(data.message || 'Failed to get recommendation');
+        }
       }
     } catch (err: any) {
       setState('error');
@@ -245,60 +271,71 @@ const AutoPRButton = ({ user, finding, repoFullName, filePath }: { user: any, fi
     }
   };
 
-  if (state === 'success' && prResult) {
-    return (
-      <a
-        href={prResult.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs hover:bg-emerald-500/20 transition-colors"
-      >
-        <CheckCircle2 className="w-3 h-3" />
-        PR #{prResult.number}
-        <ArrowUpRight className="w-3 h-3" />
-      </a>
-    );
-  }
-
-  if (state === 'error') {
-    return (
-      <div className="inline-flex items-center gap-1.5">
-        <button
-          onClick={handleCreatePR}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg text-xs hover:bg-red-500/20 transition-colors"
-          title={errorMsg}
-        >
-          <AlertCircle className="w-3 h-3" />
-          Retry
-        </button>
-        <span className="text-[10px] text-red-400 max-w-[150px] truncate" title={errorMsg}>{errorMsg}</span>
-      </div>
-    );
-  }
-
   return (
-    <button
-      onClick={handleCreatePR}
-      disabled={state === 'loading'}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors",
-        state === 'loading'
-          ? "bg-purple-500/10 text-purple-300 border border-purple-500/20 cursor-wait"
-          : "bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 hover:text-purple-300"
-      )}
-    >
-      {state === 'loading' ? (
-        <>
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Creating PR...
-        </>
+    <div className="shrink-0">
+      {state === 'success' && prResult ? (
+        <a
+          href={prResult.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs hover:bg-emerald-500/20 transition-colors"
+        >
+          <CheckCircle2 className="w-3 h-3" />
+          PR #{prResult.number}
+          <ArrowUpRight className="w-3 h-3" />
+        </a>
+      ) : state === 'success' && recommendation ? (
+        <div>
+          <button
+            onClick={() => setShowRec(!showRec)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded-lg text-xs hover:bg-cyan-500/20 transition-colors"
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            {showRec ? 'Hide' : 'Show'} Recommendation
+          </button>
+          {showRec && (
+            <div className="mt-2 p-3 bg-cyan-500/5 border border-cyan-500/20 rounded-lg text-xs text-zinc-300 whitespace-pre-wrap max-w-lg">
+              {recommendation}
+            </div>
+          )}
+        </div>
+      ) : state === 'error' ? (
+        <div className="inline-flex items-center gap-1.5">
+          <button
+            onClick={handleFix}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg text-xs hover:bg-red-500/20 transition-colors"
+            title={errorMsg}
+          >
+            <AlertCircle className="w-3 h-3" />
+            Retry
+          </button>
+          <span className="text-[10px] text-red-400 max-w-[150px] truncate" title={errorMsg}>{errorMsg}</span>
+        </div>
       ) : (
-        <>
-          <GitPullRequest className="w-3 h-3" />
-          Fix with PR
-        </>
+        <button
+          onClick={handleFix}
+          disabled={state === 'loading'}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors",
+            state === 'loading'
+              ? "bg-purple-500/10 text-purple-300 border border-purple-500/20 cursor-wait"
+              : "bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 hover:text-purple-300"
+          )}
+        >
+          {state === 'loading' ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {canCreatePR ? 'Creating PR...' : 'Generating...'}
+            </>
+          ) : (
+            <>
+              <Zap className="w-3 h-3" />
+              Fix with AI
+            </>
+          )}
+        </button>
       )}
-    </button>
+    </div>
   );
 };
 
@@ -1161,7 +1198,7 @@ const CicdAgentView = ({ user }: { user: any }) => {
                           </p>
                         )}
                       </div>
-                      {finding.repo && <AutoPRButton user={user} finding={finding} repoFullName={finding.repo} filePath={finding.file} />}
+                      <AutoPRButton user={user} finding={finding} repoFullName={finding.repo} filePath={finding.file} />
                     </div>
                   ))}
                 </div>
@@ -1484,7 +1521,7 @@ const OverviewView = ({ user }: { user: any }) => {
                     <span className="text-xs text-zinc-500 mt-1 block">{finding.repo || finding.platform}</span>
                   )}
                 </div>
-                {finding.repo && <AutoPRButton user={user} finding={finding} repoFullName={finding.repo} filePath={finding.file} />}
+                <AutoPRButton user={user} finding={finding} repoFullName={finding.repo} filePath={finding.file} />
               </div>
             ))}
           </div>

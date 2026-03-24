@@ -2504,7 +2504,9 @@ async function startServer() {
                     findings.push({
                       severity: "CRITICAL",
                       message: `Potential hardcoded secret found in ${repo.name}/${workflow.path}`,
-                      skillId: "CICD-SEC-001"
+                      skillId: "CICD-SEC-001",
+                      repo: repo.full_name,
+                      file: workflow.path
                     });
                     break;
                   }
@@ -2516,7 +2518,9 @@ async function startServer() {
                   findings.push({
                     severity: "HIGH",
                     message: `Production deployment without approval gate in ${repo.name}/${workflow.path}`,
-                    skillId: "CICD-SEC-003"
+                    skillId: "CICD-SEC-003",
+                    repo: repo.full_name,
+                    file: workflow.path
                   });
                 }
               }
@@ -2629,7 +2633,8 @@ async function startServer() {
               findings.push({
                 severity: "HIGH",
                 message: `Terraform state appears to be local in ${repo.name} - use remote state with encryption`,
-                skillId: "IAC-SEC-002"
+                skillId: "IAC-SEC-002",
+                repo: repo.full_name
               });
             }
           } catch (e) { /* search failed */ }
@@ -2656,7 +2661,8 @@ async function startServer() {
               findings.push({
                 severity: "MEDIUM",
                 message: `No branch protection on ${repo.name}/${repo.default_branch || 'main'}`,
-                skillId: "CICD-SEC-002"
+                skillId: "CICD-SEC-002",
+                repo: repo.full_name
               });
             }
           }
@@ -3756,7 +3762,7 @@ async function startServer() {
       // Get GitHub credentials for this org
       const cred = db.prepare(`
         SELECT credential_value FROM tool_credentials
-        WHERE org_id = ? AND platform = 'GitHub' AND is_configured = 1
+        WHERE org_id = ? AND platform = 'GitHub Actions' AND is_configured = 1
       `).get(orgId) as any;
 
       if (!cred) {
@@ -3990,6 +3996,57 @@ ${finding.remediation || 'Automated fix based on detected issue pattern.'}
         success: false,
         message: `Failed to create auto-fix PR: ${error.message}`,
         error: error.message
+      });
+    }
+  });
+
+  // AI Recommendation endpoint for findings without specific file/repo context
+  app.post("/api/remediation/recommend", async (req, res) => {
+    const { finding } = req.body;
+
+    if (!finding) {
+      return res.status(400).json({ success: false, message: "Finding is required" });
+    }
+
+    try {
+      const anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      });
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: `You are a DevOps and SRE expert. Provide actionable remediation recommendations for CI/CD and infrastructure findings. Be concise and specific. Format your response as:
+
+**Impact:** One line explaining why this matters
+**Steps to Fix:**
+1. Step one
+2. Step two
+...
+**Example:** Show a brief code/config example if applicable`,
+        messages: [{
+          role: "user",
+          content: `Finding:
+- Severity: ${finding.severity}
+- Message: ${finding.message}
+- Skill ID: ${finding.skillId || 'N/A'}
+${finding.remediation ? `- Current remediation hint: ${finding.remediation}` : ''}
+
+Provide a detailed, actionable recommendation to fix this issue.`
+        }]
+      });
+
+      const recommendation = response.content.find(block => block.type === 'text')?.text || '';
+
+      res.json({
+        success: true,
+        recommendation
+      });
+    } catch (error: any) {
+      console.error("AI Recommendation Error:", error);
+      res.status(500).json({
+        success: false,
+        message: `Failed to generate recommendation: ${error.message}`
       });
     }
   });
