@@ -3844,13 +3844,29 @@ CONTENT:
 \`\`\`
 `}`;
 
-      // Generate fix using LLM
-      const llmResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }]
-      });
+      // Generate fix using LLM (with retry for transient errors)
+      let llmResponse;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          llmResponse = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }]
+          });
+          break;
+        } catch (llmErr: any) {
+          if ((llmErr.status === 529 || llmErr.status === 503) && attempt < 2) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+          throw new Error(`AI service temporarily unavailable (${llmErr.status || 'unknown'}). Please try again in a moment.`);
+        }
+      }
+
+      if (!llmResponse) {
+        throw new Error('AI service unavailable after retries. Please try again.');
+      }
 
       const responseText = llmResponse.content.find(block => block.type === 'text')?.text || '';
 
@@ -4013,10 +4029,13 @@ ${finding.remediation || 'Automated fix based on detected issue pattern.'}
         apiKey: process.env.ANTHROPIC_API_KEY,
       });
 
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
-        system: `You are a DevOps and SRE expert. Provide actionable remediation recommendations for CI/CD and infrastructure findings. Be concise and specific. Format your response as:
+      let response;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 2048,
+            system: `You are a DevOps and SRE expert. Provide actionable remediation recommendations for CI/CD and infrastructure findings. Be concise and specific. Format your response as:
 
 **Impact:** One line explaining why this matters
 **Steps to Fix:**
@@ -4024,17 +4043,30 @@ ${finding.remediation || 'Automated fix based on detected issue pattern.'}
 2. Step two
 ...
 **Example:** Show a brief code/config example if applicable`,
-        messages: [{
-          role: "user",
-          content: `Finding:
+            messages: [{
+              role: "user",
+              content: `Finding:
 - Severity: ${finding.severity}
 - Message: ${finding.message}
 - Skill ID: ${finding.skillId || 'N/A'}
 ${finding.remediation ? `- Current remediation hint: ${finding.remediation}` : ''}
 
 Provide a detailed, actionable recommendation to fix this issue.`
-        }]
-      });
+            }]
+          });
+          break;
+        } catch (llmErr: any) {
+          if ((llmErr.status === 529 || llmErr.status === 503) && attempt < 2) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+          throw llmErr;
+        }
+      }
+
+      if (!response) {
+        throw new Error('AI service unavailable after retries. Please try again.');
+      }
 
       const recommendation = response.content.find(block => block.type === 'text')?.text || '';
 
