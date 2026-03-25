@@ -883,7 +883,7 @@ const CicdAgentView = ({ user }: { user: any }) => {
               <div className="text-xs text-zinc-500 uppercase mt-1">Pipelines Scanned</div>
             </Card>
             <Card className="p-4">
-              <div className="text-2xl font-light text-emerald-400">{scanData.summary.overallMaturity}/100</div>
+              <div className={cn("text-2xl font-light", scanData.summary.overallMaturity >= 70 ? "text-emerald-400" : scanData.summary.overallMaturity >= 40 ? "text-amber-400" : "text-red-400")}>{scanData.summary.overallMaturity}/100</div>
               <div className="text-xs text-zinc-500 uppercase mt-1">Avg Maturity Score</div>
             </Card>
             <Card className="p-4 border-red-500/20 bg-red-500/5">
@@ -895,6 +895,108 @@ const CicdAgentView = ({ user }: { user: any }) => {
               <div className="text-xs text-amber-500/70 uppercase mt-1">High Findings</div>
             </Card>
           </div>
+
+          {/* Maturity Score Dictionary */}
+          <Card className="p-0 overflow-hidden">
+            <details className="group">
+              <summary className="p-4 cursor-pointer flex items-center justify-between hover:bg-white/5 transition-colors">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+                  <span className="font-medium text-white text-sm">Maturity Score Breakdown</span>
+                  <span className={cn(
+                    "text-xs px-2 py-0.5 rounded-full",
+                    scanData.summary.overallMaturity >= 70 ? "bg-emerald-500/10 text-emerald-400" :
+                    scanData.summary.overallMaturity >= 40 ? "bg-amber-500/10 text-amber-400" :
+                    "bg-red-500/10 text-red-400"
+                  )}>
+                    {scanData.summary.overallMaturity >= 70 ? "Healthy" : scanData.summary.overallMaturity >= 40 ? "Needs Improvement" : "Critical"}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-500 group-open:rotate-90 transition-transform" />
+              </summary>
+              <div className="border-t border-white/10 p-4 space-y-4">
+                {/* Score Scale */}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-zinc-500">Score Scale:</span>
+                  <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400">0-39 Critical</span>
+                  <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">40-69 Needs Work</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">70-100 Healthy</span>
+                </div>
+
+                {/* CI/CD Skills */}
+                <div>
+                  <h4 className="text-xs font-medium text-zinc-400 uppercase mb-2">CI/CD Pipeline Skills</h4>
+                  <div className="space-y-2">
+                    {[
+                      { id: "CICD-SEC-001", name: "Secret Management", desc: "% of workflows with proper secret handling (no hardcoded credentials)" },
+                      { id: "CICD-SEC-002", name: "Branch Protection", desc: "% of repositories with branch protection rules enabled" },
+                      { id: "CICD-SEC-003", name: "Approval Gates", desc: "% of workflows with environment protection / approval gates" },
+                      { id: "CICD-QA-001", name: "Testing Stages", desc: "% of workflows with automated test stages" },
+                      { id: "CICD-QA-003", name: "SAST Integration", desc: "% of workflows with security scanning tools (SonarQube, Snyk, CodeQL)" },
+                    ].map(skill => {
+                      const score = scanData.platforms?.[0]?.skillScores?.find((s: any) => s.skillId === skill.id);
+                      const val = score?.score ?? 0;
+                      return (
+                        <div key={skill.id} className="flex items-center gap-3">
+                          <div className="w-24 shrink-0">
+                            <span className="text-[10px] font-mono text-zinc-500">{skill.id}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-zinc-300">{skill.name}</span>
+                              <span className={cn("text-xs font-mono", val >= 70 ? "text-emerald-400" : val >= 40 ? "text-amber-400" : "text-red-400")}>{val}/100</span>
+                            </div>
+                            <div className="w-full bg-zinc-800 rounded-full h-1">
+                              <div className={cn("h-1 rounded-full transition-all", val >= 70 ? "bg-emerald-500" : val >= 40 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${val}%` }} />
+                            </div>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{skill.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* IaC Skills */}
+                <div>
+                  <h4 className="text-xs font-medium text-zinc-400 uppercase mb-2">Infrastructure as Code Skills</h4>
+                  <div className="space-y-2">
+                    {[
+                      { id: "IAC-GOV-001", name: "IaC Adoption", desc: "% of repositories using Terraform, CloudFormation, or CDK" },
+                      { id: "IAC-GOV-002", name: "Tag Compliance", desc: "% of IaC files with proper resource tags (environment, owner)" },
+                      { id: "IAC-SEC-001", name: "IaC Security Scanning", desc: "% of IaC repos with tfsec, checkov, or cfn-lint in pipeline" },
+                      { id: "IAC-SEC-002", name: "State Security", desc: "% of Terraform projects using remote state vs local state" },
+                      { id: "IAC-COST-001", name: "Right-Sizing", desc: "% of resources using variables vs hardcoded instance sizes" },
+                      { id: "IAC-MOD-001", name: "Module Usage", desc: "% of resources using reusable modules vs inline definitions" },
+                      { id: "IAC-MOD-002", name: "Version Pinning", desc: "% of providers and modules with pinned versions" },
+                    ].map(skill => {
+                      const score = scanData.platforms?.[0]?.iacSkillScores?.find((s: any) => s.skillId === skill.id);
+                      const val = score?.score ?? 0;
+                      return (
+                        <div key={skill.id} className="flex items-center gap-3">
+                          <div className="w-24 shrink-0">
+                            <span className="text-[10px] font-mono text-zinc-500">{skill.id}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-zinc-300">{skill.name}</span>
+                              <span className={cn("text-xs font-mono", val >= 70 ? "text-emerald-400" : val >= 40 ? "text-amber-400" : "text-red-400")}>{val}/100</span>
+                            </div>
+                            <div className="w-full bg-zinc-800 rounded-full h-1">
+                              <div className={cn("h-1 rounded-full transition-all", val >= 70 ? "bg-emerald-500" : val >= 40 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${val}%` }} />
+                            </div>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{skill.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-zinc-600 italic">Overall maturity = average of all 12 skill scores above. Each skill is scored 0-100 based on the percentage of your repos/workflows meeting that criterion.</p>
+              </div>
+            </details>
+          </Card>
 
           {/* IaC Analysis Section */}
           {scanData.iacStats && (
