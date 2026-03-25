@@ -183,16 +183,7 @@ async function startServer() {
     // Migration already applied or not needed
   }
 
-  // Clear previously stored scan data on startup
-  db.exec(`
-    DELETE FROM scan_results;
-    DELETE FROM skill_assessments;
-    DELETE FROM sre_scan_results;
-    DELETE FROM sre_assessments;
-    DELETE FROM monitor_details;
-    DELETE FROM devprod_metrics;
-    DELETE FROM aidlc_metrics;
-  `);
+  // Scan data is now persisted across deployments via PVC-backed SQLite
 
   app.use(express.json());
 
@@ -3018,6 +3009,9 @@ async function startServer() {
         });
       });
 
+      // Get IaC stats from GitHub Actions result
+      const iacStats = resultPlatforms.find((p: any) => p.iacStats)?.iacStats || null;
+
       res.json({
         success: true,
         hasData: true,
@@ -3028,7 +3022,8 @@ async function startServer() {
             criticalIssues,
             highIssues
           },
-          platforms: resultPlatforms
+          platforms: resultPlatforms,
+          iacStats
         }
       });
     } catch (error: any) {
