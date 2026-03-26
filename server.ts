@@ -4106,6 +4106,29 @@ Provide a detailed, actionable recommendation to fix this issue.`
     }
   });
 
+  // --- TPM Dashboard Endpoint ---
+  app.get("/api/tpm/dashboard", (req, res) => {
+    const orgId = req.query.orgId as string;
+    if (!orgId) return res.status(400).json({ success: false, message: "orgId required" });
+
+    try {
+      // Check if we have TPM data stored
+      const tpmData = db.prepare(`
+        SELECT data FROM scan_results WHERE org_id = ? AND platform = 'tpm' ORDER BY timestamp DESC LIMIT 1
+      `).get(orgId) as any;
+
+      if (tpmData) {
+        const data = JSON.parse(tpmData.data);
+        return res.json({ success: true, hasData: true, data });
+      }
+
+      res.json({ success: true, hasData: false });
+    } catch (error: any) {
+      console.error("TPM Dashboard Error:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch TPM data." });
+    }
+  });
+
   // --- RAG Agentic LLM Endpoint ---
   app.post("/api/agent/ask", async (req, res) => {
     const { orgId, query, ragContext, agentType } = req.body;

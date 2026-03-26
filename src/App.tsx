@@ -2573,6 +2573,422 @@ const SreView = ({ user }: { user: any }) => {
   );
 };
 
+// --- TPM Agent View ---
+
+const sampleTPMPrograms = [
+  { program: "Cloud Migration Q1", owner: "Sathya M.", status: "On Track", milestones: 8, completed: 5, atRisk: 1, blocked: 0, teams: 4, dependencies: 12, resolved: 9, targetDate: "2026-04-15", progress: 63 },
+  { program: "Platform Modernization", owner: "Rachel K.", status: "At Risk", milestones: 12, completed: 6, atRisk: 3, blocked: 1, teams: 6, dependencies: 18, resolved: 11, targetDate: "2026-06-30", progress: 50 },
+  { program: "Security Hardening", owner: "David L.", status: "On Track", milestones: 6, completed: 4, atRisk: 0, blocked: 0, teams: 3, dependencies: 8, resolved: 7, targetDate: "2026-04-30", progress: 67 },
+  { program: "Data Platform v2", owner: "Priya P.", status: "Blocked", milestones: 10, completed: 3, atRisk: 2, blocked: 2, teams: 5, dependencies: 15, resolved: 8, targetDate: "2026-07-15", progress: 30 },
+  { program: "Developer Experience", owner: "James W.", status: "On Track", milestones: 5, completed: 4, atRisk: 0, blocked: 0, teams: 2, dependencies: 6, resolved: 6, targetDate: "2026-04-01", progress: 80 },
+];
+
+const sampleTPMMetrics = {
+  onTimeDelivery: 72,
+  avgCycleTime: 14.5,
+  dependencyResolutionRate: 78,
+  riskMitigationRate: 85,
+  scopeChangeFrequency: 2.3,
+  stakeholderNPS: 8.1,
+  escalationRate: 12,
+  decisionVelocity: 3.2,
+  crossTeamCollabIndex: 74,
+  actionItemCompletionRate: 88,
+};
+
+const sampleTPMRisks = [
+  { id: "RSK-001", program: "Platform Modernization", risk: "Vendor API deprecation in Q2", impact: "HIGH", probability: "HIGH", mitigation: "Migrate to v3 API by March", owner: "Rachel K.", status: "In Progress" },
+  { id: "RSK-002", program: "Data Platform v2", risk: "Key engineer on PTO during critical phase", impact: "MEDIUM", probability: "HIGH", mitigation: "Cross-train backup engineer", owner: "Priya P.", status: "Open" },
+  { id: "RSK-003", program: "Cloud Migration Q1", risk: "Cost overrun on data transfer", impact: "HIGH", probability: "MEDIUM", mitigation: "Implement incremental sync", owner: "Sathya M.", status: "Mitigated" },
+  { id: "RSK-004", program: "Data Platform v2", risk: "Schema migration blocking downstream teams", impact: "CRITICAL", probability: "HIGH", mitigation: "Run parallel schemas during transition", owner: "Priya P.", status: "Open" },
+  { id: "RSK-005", program: "Security Hardening", risk: "Compliance audit deadline overlap", impact: "MEDIUM", probability: "LOW", mitigation: "Pre-audit readiness review scheduled", owner: "David L.", status: "Mitigated" },
+];
+
+const sampleTPMTimeline = [
+  { week: "W1", delivered: 4, planned: 5, blocked: 1 },
+  { week: "W2", delivered: 6, planned: 6, blocked: 0 },
+  { week: "W3", delivered: 3, planned: 7, blocked: 2 },
+  { week: "W4", delivered: 7, planned: 7, blocked: 0 },
+  { week: "W5", delivered: 5, planned: 8, blocked: 1 },
+  { week: "W6", delivered: 8, planned: 8, blocked: 0 },
+  { week: "W7", delivered: 6, planned: 9, blocked: 2 },
+  { week: "W8", delivered: 9, planned: 9, blocked: 0 },
+];
+
+const sampleDependencyHealth = [
+  { name: "Resolved", value: 41, color: "#10b981" },
+  { name: "In Progress", value: 12, color: "#f59e0b" },
+  { name: "Blocked", value: 3, color: "#ef4444" },
+  { name: "Not Started", value: 3, color: "#71717a" },
+];
+
+const TPMView = ({ user }: { user: any }) => {
+  const { startScan, activeScans } = useScanContext();
+  const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
+  const [dashboardData, setDashboardData] = useState<any>(null);
+
+  const programs = dashboardData?.programs || sampleTPMPrograms;
+  const metrics = dashboardData?.metrics || sampleTPMMetrics;
+  const risks = dashboardData?.risks || sampleTPMRisks;
+  const timeline = dashboardData?.timeline || sampleTPMTimeline;
+  const depHealth = dashboardData?.dependencyHealth || sampleDependencyHealth;
+
+  useEffect(() => {
+    if (user?.org_id) {
+      fetch(`/api/tpm/dashboard?orgId=${user.org_id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.hasData) {
+            setDashboardData(data.data);
+            setScanState('complete');
+          }
+        })
+        .catch(console.error);
+    }
+  }, [user]);
+
+  const runScan = async () => {
+    setScanState('scanning');
+    try {
+      const scanId = await startScan('tpm', 'all', user?.org_id);
+      const pollInterval = setInterval(() => {
+        const scan = Array.from(activeScans.values()).find(s => s.scanId === scanId);
+        if (scan) {
+          if (scan.status === 'complete') {
+            setDashboardData(scan.data);
+            setScanState('complete');
+            clearInterval(pollInterval);
+          } else if (scan.status === 'error') {
+            setScanState('idle');
+            clearInterval(pollInterval);
+          }
+        }
+      }, 500);
+    } catch {
+      setScanState('idle');
+    }
+  };
+
+  // Computed summary
+  const totalPrograms = programs.length;
+  const onTrackCount = programs.filter((p: any) => p.status === 'On Track').length;
+  const atRiskCount = programs.filter((p: any) => p.status === 'At Risk').length;
+  const blockedCount = programs.filter((p: any) => p.status === 'Blocked').length;
+  const avgProgress = Math.round(programs.reduce((s: number, p: any) => s + p.progress, 0) / totalPrograms);
+  const totalDeps = programs.reduce((s: number, p: any) => s + p.dependencies, 0);
+  const resolvedDeps = programs.reduce((s: number, p: any) => s + p.resolved, 0);
+  const openRisks = risks.filter((r: any) => r.status === 'Open').length;
+  const criticalRisks = risks.filter((r: any) => r.impact === 'CRITICAL').length;
+
+  // Chart data
+  const deliveryBarData = timeline.map((w: any) => ({ name: w.week, Delivered: w.delivered, Planned: w.planned, Blocked: w.blocked }));
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Technical Program Management Agent</h2>
+          <p className="text-sm text-zinc-400 mt-1">Track program delivery, cross-team dependencies, risk management, and stakeholder metrics</p>
+        </div>
+        <button
+          onClick={runScan}
+          disabled={scanState === 'scanning'}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+            scanState === 'scanning'
+              ? "bg-white/5 text-zinc-500 cursor-not-allowed"
+              : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+          )}
+        >
+          {scanState === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          {scanState === 'scanning' ? 'Analyzing...' : 'Run TPM Analysis'}
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-emerald-500/10 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            </div>
+            <span className="text-xs text-zinc-400 uppercase tracking-wider">On-Time Delivery</span>
+          </div>
+          <div className={cn("text-3xl font-light", metrics.onTimeDelivery >= 80 ? "text-emerald-400" : metrics.onTimeDelivery >= 60 ? "text-amber-400" : "text-red-400")}>{metrics.onTimeDelivery}%</div>
+          <div className="text-xs text-zinc-500 mt-1">Milestones delivered on schedule</div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Clock className="w-5 h-5 text-purple-400" />
+            </div>
+            <span className="text-xs text-zinc-400 uppercase tracking-wider">Avg Cycle Time</span>
+          </div>
+          <div className="text-3xl font-light text-white">{metrics.avgCycleTime}d</div>
+          <div className="text-xs text-zinc-500 mt-1">Days from start to completion</div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <span className="text-xs text-zinc-400 uppercase tracking-wider">Open Risks</span>
+          </div>
+          <div className={cn("text-3xl font-light", openRisks === 0 ? "text-emerald-400" : openRisks <= 3 ? "text-amber-400" : "text-red-400")}>{openRisks}</div>
+          <div className="text-xs text-zinc-500 mt-1">{criticalRisks > 0 ? `${criticalRisks} critical` : 'No critical risks'}</div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-cyan-500/10 rounded-lg">
+              <GitMerge className="w-5 h-5 text-cyan-400" />
+            </div>
+            <span className="text-xs text-zinc-400 uppercase tracking-wider">Dependencies</span>
+          </div>
+          <div className="text-3xl font-light text-white">{resolvedDeps}/{totalDeps}</div>
+          <div className="text-xs text-zinc-500 mt-1">{Math.round((resolvedDeps / totalDeps) * 100)}% resolved</div>
+        </Card>
+      </div>
+
+      {/* Program Status Overview */}
+      <div className="grid grid-cols-4 gap-3">
+        <Card className="p-3 text-center bg-white/[0.02]">
+          <div className="text-2xl font-light text-white">{totalPrograms}</div>
+          <div className="text-[10px] text-zinc-500 uppercase mt-1">Total Programs</div>
+        </Card>
+        <Card className="p-3 text-center bg-emerald-500/5 border-emerald-500/20">
+          <div className="text-2xl font-light text-emerald-400">{onTrackCount}</div>
+          <div className="text-[10px] text-emerald-500/70 uppercase mt-1">On Track</div>
+        </Card>
+        <Card className="p-3 text-center bg-amber-500/5 border-amber-500/20">
+          <div className="text-2xl font-light text-amber-400">{atRiskCount}</div>
+          <div className="text-[10px] text-amber-500/70 uppercase mt-1">At Risk</div>
+        </Card>
+        <Card className="p-3 text-center bg-red-500/5 border-red-500/20">
+          <div className="text-2xl font-light text-red-400">{blockedCount}</div>
+          <div className="text-[10px] text-red-500/70 uppercase mt-1">Blocked</div>
+        </Card>
+      </div>
+
+      {/* Programs Table */}
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 border-b border-white/10">
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <LayoutDashboard className="w-4 h-4 text-zinc-400" />
+            Program Portfolio
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/5">
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Program</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Owner</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-center">Progress</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Milestones</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Teams</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Dependencies</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Target</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {programs.map((prog: any, i: number) => (
+                <tr key={i} className={cn("hover:bg-white/[0.02] transition-colors", i % 2 === 1 ? "bg-white/[0.01]" : "")}>
+                  <td className="p-3 text-sm text-white font-medium">{prog.program}</td>
+                  <td className="p-3 text-sm text-zinc-400">{prog.owner}</td>
+                  <td className="p-3">
+                    <span className={cn("px-2 py-0.5 rounded text-xs font-medium",
+                      prog.status === 'On Track' ? "bg-emerald-500/10 text-emerald-400" :
+                      prog.status === 'At Risk' ? "bg-amber-500/10 text-amber-400" :
+                      "bg-red-500/10 text-red-400"
+                    )}>{prog.status}</span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+                        <div className={cn("h-1.5 rounded-full",
+                          prog.progress >= 70 ? "bg-emerald-500" : prog.progress >= 40 ? "bg-amber-500" : "bg-red-500"
+                        )} style={{ width: `${prog.progress}%` }} />
+                      </div>
+                      <span className="text-xs text-zinc-400 font-mono w-8">{prog.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="p-3 text-sm text-right">
+                    <span className="text-emerald-400 font-mono">{prog.completed}</span>
+                    <span className="text-zinc-600">/</span>
+                    <span className="text-zinc-400 font-mono">{prog.milestones}</span>
+                    {prog.atRisk > 0 && <span className="text-amber-400 text-xs ml-1">({prog.atRisk} at risk)</span>}
+                  </td>
+                  <td className="p-3 text-sm text-zinc-300 text-right font-mono">{prog.teams}</td>
+                  <td className="p-3 text-sm text-right">
+                    <span className="text-emerald-400 font-mono">{prog.resolved}</span>
+                    <span className="text-zinc-600">/</span>
+                    <span className="text-zinc-400 font-mono">{prog.dependencies}</span>
+                  </td>
+                  <td className="p-3 text-sm text-zinc-400 text-right font-mono">{prog.targetDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Risk Register */}
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 border-b border-white/10">
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Risk Register
+            <span className="ml-auto text-xs text-zinc-500">{risks.length} total risks</span>
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/5">
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">ID</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Program</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Risk Description</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-center">Impact</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-center">Probability</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Mitigation</th>
+                <th className="p-3 text-xs font-medium text-zinc-400 uppercase tracking-wider text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {risks.map((risk: any, i: number) => (
+                <tr key={i} className={cn("hover:bg-white/[0.02] transition-colors", i % 2 === 1 ? "bg-white/[0.01]" : "")}>
+                  <td className="p-3 text-xs text-zinc-500 font-mono">{risk.id}</td>
+                  <td className="p-3 text-sm text-zinc-400">{risk.program}</td>
+                  <td className="p-3 text-sm text-white">{risk.risk}</td>
+                  <td className="p-3 text-center">
+                    <span className={cn("px-2 py-0.5 rounded text-xs font-medium",
+                      risk.impact === 'CRITICAL' ? "bg-red-500/10 text-red-400" :
+                      risk.impact === 'HIGH' ? "bg-amber-500/10 text-amber-400" :
+                      "bg-zinc-500/10 text-zinc-400"
+                    )}>{risk.impact}</span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={cn("px-2 py-0.5 rounded text-xs font-medium",
+                      risk.probability === 'HIGH' ? "bg-red-500/10 text-red-400" :
+                      risk.probability === 'MEDIUM' ? "bg-amber-500/10 text-amber-400" :
+                      "bg-emerald-500/10 text-emerald-400"
+                    )}>{risk.probability}</span>
+                  </td>
+                  <td className="p-3 text-sm text-zinc-400 max-w-[200px] truncate" title={risk.mitigation}>{risk.mitigation}</td>
+                  <td className="p-3 text-center">
+                    <span className={cn("px-2 py-0.5 rounded text-xs font-medium",
+                      risk.status === 'Mitigated' ? "bg-emerald-500/10 text-emerald-400" :
+                      risk.status === 'In Progress' ? "bg-cyan-500/10 text-cyan-400" :
+                      "bg-amber-500/10 text-amber-400"
+                    )}>{risk.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* TPM Metrics Grid */}
+      <div>
+        <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-zinc-400" />
+          TPM Health Metrics
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[
+            { label: 'On-Time Delivery', value: `${metrics.onTimeDelivery}%`, good: metrics.onTimeDelivery >= 75 },
+            { label: 'Dependency Resolution', value: `${metrics.dependencyResolutionRate}%`, good: metrics.dependencyResolutionRate >= 75 },
+            { label: 'Risk Mitigation Rate', value: `${metrics.riskMitigationRate}%`, good: metrics.riskMitigationRate >= 80 },
+            { label: 'Stakeholder NPS', value: `${metrics.stakeholderNPS}/10`, good: metrics.stakeholderNPS >= 7 },
+            { label: 'Decision Velocity', value: `${metrics.decisionVelocity}d`, good: metrics.decisionVelocity <= 5 },
+            { label: 'Scope Change Freq', value: `${metrics.scopeChangeFrequency}/sprint`, good: metrics.scopeChangeFrequency <= 3 },
+            { label: 'Escalation Rate', value: `${metrics.escalationRate}%`, good: metrics.escalationRate <= 15 },
+            { label: 'Cross-Team Collab', value: `${metrics.crossTeamCollabIndex}%`, good: metrics.crossTeamCollabIndex >= 70 },
+            { label: 'Action Item Completion', value: `${metrics.actionItemCompletionRate}%`, good: metrics.actionItemCompletionRate >= 85 },
+            { label: 'Avg Program Progress', value: `${avgProgress}%`, good: avgProgress >= 60 },
+          ].map((metric, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+            >
+              <Card className="flex flex-col items-center text-center py-4">
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">{metric.label}</div>
+                <div className={cn("text-xl font-light", metric.good ? "text-emerald-400" : "text-amber-400")}>
+                  {metric.value}
+                </div>
+                <div className={cn("w-2 h-2 rounded-full mt-2", metric.good ? "bg-emerald-500" : "bg-amber-500")} />
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Delivery Velocity */}
+        <Card>
+          <h3 className="text-sm font-medium text-white mb-4">Delivery Velocity (Weekly)</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={deliveryBarData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <XAxis dataKey="name" stroke="#71717a" fontSize={12} />
+              <YAxis stroke="#71717a" fontSize={12} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#111111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                labelStyle={{ color: '#a1a1aa' }}
+              />
+              <Bar dataKey="Planned" fill="#3b82f6" radius={[4, 4, 0, 0]} opacity={0.4} />
+              <Bar dataKey="Delivered" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Blocked" fill="#ef4444" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Dependency Health */}
+        <Card>
+          <h3 className="text-sm font-medium text-white mb-4">Dependency Health</h3>
+          <div className="flex items-center justify-center gap-8">
+            <ResponsiveContainer width="50%" height={250}>
+              <PieChart>
+                <Pie
+                  data={depHealth}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {depHealth.map((entry: any, index: number) => (
+                    <Cell key={index} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#111111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-3">
+              {depHealth.map((entry: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.color }} />
+                  <span className="text-zinc-400">{entry.name}</span>
+                  <span className="text-white font-mono ml-auto">{entry.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 // --- Dev Productivity View ---
 
 const sampleDevMetrics = [
@@ -2978,6 +3394,7 @@ export default function App() {
     { id: 'sre', label: 'SRE Agent', icon: Shield },
     { id: 'rag', label: 'RAG Training', icon: Brain },
     { id: 'devprod', label: 'AI Dev Productivity', icon: Code2 },
+    { id: 'tpm', label: 'TPM Agent', icon: TrendingUp },
   ];
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -3216,6 +3633,7 @@ export default function App() {
           {activeTab === 'rag' && <RAGTrainingPanel />}
           {activeTab === 'sre' && <SreView user={user} />}
           {activeTab === 'devprod' && <DevProductivityView user={user} />}
+          {activeTab === 'tpm' && <TPMView user={user} />}
         </div>
       </main>
     </div>
