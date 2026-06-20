@@ -1,0 +1,7 @@
+# CODEOWNERS file
+# This file defines individuals or teams responsible for code review in this repository.
+# Lines are matched against changed file paths; the last matching pattern takes precedence.
+# Learn more: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repository
+* @yoda-smusanipalli
